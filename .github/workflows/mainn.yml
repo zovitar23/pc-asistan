@@ -1,0 +1,110 @@
+name: Build My Python APK
+on:
+  workflow_dispatch: # Manuel başlatmak için
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Create main.py from code
+        run: |
+          cat << 'EOF' > main.py
+          from __future__ import annotations
+          from kivy.app import App
+          from kivy.clock import Clock
+          from kivy.core.window import Window
+          from kivy.graphics import Color, Ellipse, Rectangle
+          from kivy.uix.floatlayout import FloatLayout
+          from kivy.uix.label import Label
+          from kivy.uix.widget import Widget
+          from kivy.utils import platform
+
+          ANDROID = platform == "android"
+
+          if ANDROID:
+              try:
+                  from android.permissions import request_permissions, Permission
+                  from jnius import autoclass
+                  PythonActivity = autoclass("org.kivy.android.PythonActivity")
+                  Intent = autoclass("android.content.Intent")
+                  RecognizerIntent = autoclass("android.speech.RecognizerIntent")
+                  TextToSpeech = autoclass("android.speech.tts.TextToSpeech")
+                  Locale = autoclass("java.util.Locale")
+              except ImportError as e:
+                  print(f"Android import hatası: {e}")
+
+          class PulseButton(Widget):
+              def __init__(self, **kwargs):
+                  super().__init__(**kwargs)
+                  self.base_r = 96
+                  self.pulse_r = self.base_r
+                  with self.canvas:
+                      Color(0.06, 0.06, 0.08, 1)
+                      self._bg = Rectangle(pos=self.pos, size=Window.size)
+                      Color(0.55, 0.20, 0.85, 0.9)
+                      self._core = Ellipse(pos=(0,0), size=(0,0))
+                  self.bind(pos=self._redraw, size=self._redraw)
+
+              def _redraw(self, *_):
+                  self._bg.pos = self.pos
+                  self._bg.size = self.size
+                  r = self.pulse_r
+                  self._core.pos = (self.center_x - r, self.center_y - r)
+                  self._core.size = (r * 2, r * 2)
+
+          class RyoseApp(App):
+              def build(self):
+                  root = FloatLayout()
+                  self.label = Label(text="Dokun ve konus", pos_hint={"center_x": 0.5, "center_y": 0.8}, font_size="24sp")
+                  root.add_widget(self.label)
+                  self.pulse = PulseButton()
+                  root.add_widget(self.pulse)
+                  root.bind(on_touch_down=self._on_touch)
+                  if ANDROID: self._request_permissions()
+                  return root
+
+              def _request_permissions(self):
+                  if ANDROID: request_permissions([Permission.RECORD_AUDIO, Permission.INTERNET])
+
+              def _on_touch(self, widget, touch):
+                  if not self.is_listening if hasattr(self, 'is_listening') else True:
+                      self.label.text = "Dinleniyor..."
+                      # Buraya start_listening mantığını basitce ekleyebilirsin
+          
+          if __name__ == "__main__":
+              RyoseApp().run()
+          EOF
+
+      - name: Create buildozer.spec
+        run: |
+          cat << 'EOF' > buildozer.spec
+          [app]
+          title = PC Asistan
+          package.name = pcasistan
+          package.domain = org.test
+          source.dir = .
+          source.include_exts = py,png,jpg,kv,atlas
+          version = 0.1
+          requirements = python3,kivy==2.3.0,android,pyjnius
+          android.permissions = RECORD_AUDIO, INTERNET
+          android.archs = arm64-v8a, armeabi-v7a
+          [buildozer]
+          log_level = 2
+          EOF
+
+      - name: Build with Buildozer
+        uses: ArtemSBulgakov/buildozer-action@v1
+        with:
+          command: buildozer android debug
+          buildozer_version: master
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Uygulama-Dosyasi
+          path: bin/*.apk
