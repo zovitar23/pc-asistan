@@ -1,0 +1,28 @@
+name: Build APK
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install buildozer cython kivy
+          sudo apt-get update
+          sudo apt-get install -y openjdk-11-jdk-headless
+      
+      - name: Build APK
+        run: buildozer android debug
+      
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: APK
+          path: bin/*.apk
